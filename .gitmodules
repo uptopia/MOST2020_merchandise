@@ -1,0 +1,3 @@
+[submodule "affordance_ros"]
+	path = affordance_ros
+	url = https://github.com/uptopia/affordance_ros.git
