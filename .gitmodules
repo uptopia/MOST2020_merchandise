@@ -1,3 +1,6 @@
 [submodule "affordance_ros"]
 	path = affordance_ros
 	url = https://github.com/uptopia/affordance_ros.git
+[submodule "timda_dual_arm"]
+	path = timda_dual_arm
+	url = https://github.com/tku-iarc/timda_dual_arm.git
