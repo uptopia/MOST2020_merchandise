@@ -92,9 +92,17 @@ bool save_organized_cloud = true;
 std::string file_path_cloud_organized = "organized_cloud_tmp.pcd";
 
 pcl::PointCloud<PointTRGB>::Ptr organized_cloud_ori(new pcl::PointCloud<PointTRGB>);
+pcl::PointCloud<PointTRGB>::Ptr cap(new pcl::PointCloud<PointTRGB>);
+pcl::PointCloud<PointTRGB>::Ptr body(new pcl::PointCloud<PointTRGB>);
+pcl::PointCloud<PointTRGB>::Ptr handle(new pcl::PointCloud<PointTRGB>);
+pcl::PointCloud<PointTRGB>::Ptr plate(new pcl::PointCloud<PointTRGB>);
+
 
 ros::Publisher top3_cloud_pub, target_sauce_center_pub;
 sensor_msgs::PointCloud2 top3_clouds_msg;
+
+ros::Publisher cap_pub; 
+sensor_msgs::PointCloud2 cap_msg;
 
 // // tf::TransformBroadcaster br;
 // // tf::Transform transform;
@@ -462,19 +470,62 @@ void juice_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
         
         std::vector<cv::Mat> rgbChannels(3);
         cv::split(juice_color, rgbChannels);
+        
+        ////Enlarged dot
+        // cv::imshow("R channel", rgbChannels[2]); 
+        // cv::waitKey(1);
 
-        cv::imshow("R channel", rgbChannels[2]);
-        cv::waitKey(1);
+        ////Green: cap, handle
+        // cv::imshow("G channel", rgbChannels[1]);
+        // cv::waitKey(1);
 
-        cv::imshow("G channel", rgbChannels[1]);
-        cv::waitKey(1);
+        int nChannels = rgbChannels[0].channels();
+        int nRows = rgbChannels[0].rows;
+        int nCols = rgbChannels[0].cols;
+        // int nStep = rgbChannels[1].step;
 
-        cv::imshow("B channel", rgbChannels[0]);
-        cv::waitKey(1);
-        // cv::Mat blank_ch, fin_img;
-        // blank_ch = cv::Mat::zeros(cv::Size(juice_color.cols, juice_color.rows), CV_8UC1);
-        // std::vector<cv::Mat> channels_r;
-        // channels_r.push_back(blank_ch);
+        // uchar* srcData = rgbChannels[1].data;
+        cap->clear();
+        for(int y = 0; y< nRows; y++)
+        {
+            for(int x = 0; x< nCols; x++)
+            {   
+                cout<<(int)(juice_color.at<uchar>(y, x))<<"_"<<rgbChannels[1].at<uchar>(y, x)<<"@";
+                PointTRGB pt = organized_cloud_ori->at(x,y);
+                cap->push_back(pt);
+                
+                // if((int)(juice_color.at<uchar>(y, x)) > 0)
+                // {
+                //     cout<<"pixel val " << x <<","<< y <<","<< (int)(juice_color.at<uchar>(y, x))<<endl;
+                //     PointTRGB pt = organized_cloud_ori->at(x,y);
+                //     cap->push_back(pt);
+                //     // if(pcl_isfinite(pt.x) && pcl_isfinite(pt.y) && pcl_isfinite(pt.z))
+                //     // {
+                //     //     cap->push_back(organized_cloud_ori->at(x,y));
+                //     // }
+                // }                 
+            }
+            
+        }
+
+        cout<<"total cap points "<< cap->size() <<endl;
+        cout<<"total cap points "<< cap->size() <<endl;
+        cout<<"total cap points "<< cap->size() <<endl;
+        cout<<"total cap points "<< cap->size() <<endl;
+
+        pcl::toROSMsg(*cap, cap_msg);
+        cap_msg.header.frame_id = "camera_color_optical_frame";
+        cap_pub.publish(cap_msg);
+
+        ////Blue: body, plate
+        // cv::imshow("B channel", rgbChannels[0]);
+        // cv::waitKey(1);
+
+
+        // // cv::Mat blank_ch, fin_img;
+        // // blank_ch = cv::Mat::zeros(cv::Size(juice_color.cols, juice_color.rows), CV_8UC1);
+        // // std::vector<cv::Mat> channels_r;
+        // // channels_r.push_back(blank_ch);
 
     }
     catch(cv_bridge::Exception& e)
@@ -483,8 +534,8 @@ void juice_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
         return;
     }
     
-    cv::imshow("juice segseg", cv_ptr->image);
-    cv::waitKey(3);
+    // cv::imshow("juice segseg", cv_ptr->image);
+    // cv::waitKey(3);
 }
 
 void popcorn_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
@@ -506,8 +557,8 @@ void popcorn_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-    cv::imshow("popcorn segseg", cv_ptr->image);
-    cv::waitKey(3);    
+    // cv::imshow("popcorn segseg", cv_ptr->image);
+    // cv::waitKey(3);    
 }
 
 int main(int argc, char** argv)
@@ -528,6 +579,8 @@ int main(int argc, char** argv)
     image_transport::Subscriber sub_juice_seg_img = it.subscribe("juice_seg_img", 1000, juice_seg_img_cb); //<sensor_msgs::Image>
     image_transport::Subscriber sub_popcorn_seg_img = it.subscribe("popcorn_seg_img", 1000, popcorn_seg_img_cb);
 
+    // 
+    cap_pub = nh.advertise<sensor_msgs::PointCloud2>("cap_topic",1);
     cout<<"try\n";
     ros::spin();
     // cv::destroyWindow('juice');
