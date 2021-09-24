@@ -22,7 +22,8 @@
 // #include <realsense2_camera/Extrinsics.h> 
 
 //msgs
-#include <affordancenet/XYA.h>
+#include <part_sematic_seg/XYA.h>
+#include <part_sematic_seg/XYAs.h>
 
 
 #include <boost/make_shared.hpp>
@@ -172,29 +173,29 @@ sensor_msgs::PointCloud2 top3_clouds_msg;
 // }
 
 
-// // void organized_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_msg)
-// // {
-// //     //==================================================//
-// //     // 有序點雲 Organized Point Cloud; Depth Point Cloud
-// //     // Subscribe "/camera/depth_registered/points" topic
-// //     //==================================================//
-// //     cout << "organized_cloud_cb" << endl;
+void organized_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_msg)
+{
+    //==================================================//
+    // 有序點雲 Organized Point Cloud; Depth Point Cloud
+    // Subscribe "/camera/depth_registered/points" topic
+    //==================================================//
+    cout << "organized_cloud_cb" << endl;
 
-// //     int height = organized_cloud_msg->height;
-// //     int width = organized_cloud_msg->width;
-// //     int points = height * width;
+    int height = organized_cloud_msg->height;
+    int width = organized_cloud_msg->width;
+    int points = height * width;
 
-// //     if((points!=0) && (save_organized_cloud ==true))
-// //     {
-// //         // 將點雲格式由sensor_msgs/PointCloud2轉成pcl/PointCloud(PointXYZ, PointXYZRGB)
-// //         organized_cloud_ori->clear();
-// //         pcl::fromROSMsg(*organized_cloud_msg, *organized_cloud_ori);
+    if((points!=0) && (save_organized_cloud ==true))
+    {
+        // 將點雲格式由sensor_msgs/PointCloud2轉成pcl/PointCloud(PointXYZ, PointXYZRGB)
+        organized_cloud_ori->clear();
+        pcl::fromROSMsg(*organized_cloud_msg, *organized_cloud_ori);
 
-// //         cout << "organized_cloud_ori saved: " << file_path_cloud_organized << "; (width, height) = " << width << ", " << height << endl;
-// //         pcl::io::savePCDFileBinary<PointTRGB>(file_path_cloud_organized, *organized_cloud_ori); //savePCDFileASCII
-// //         cout << "organized_cloud_ori saved: DONE! \n";
-// //     }
-// // }
+        cout << "organized_cloud_ori saved: " << file_path_cloud_organized << "; (width, height) = " << width << ", " << height << endl;
+        pcl::io::savePCDFileBinary<PointTRGB>(file_path_cloud_organized, *organized_cloud_ori); //savePCDFileASCII
+        cout << "organized_cloud_ori saved: DONE! \n";
+    }
+}
 // void CalculatePCA(pcl::PointCloud<PointTRGB>::Ptr & cloud, Eigen::Matrix3f eigenVectorsPCA)
 // {
 //     Eigen::Vector4f pcaCentroid;
@@ -421,29 +422,28 @@ sensor_msgs::PointCloud2 top3_clouds_msg;
 //     }
 // }
 
-void juice_xya_cb(const affordancenet::XYA& xya_msg)
+void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
 {
     cout<<"juice_xya_cb\n";
-    // if(!xya_msg->data.c_str())//->c1.empty())
-    // {
-    //     cout << "=============juice=================" << endl;
-    //     cout << "centroid c1: " << xya_msg->data.c_str() << endl;
-    //     // cout << "centroid c2: " << xya_msg->c2.c_str() << endl;
-    //     // cout << "angle: " << xya_msg->angle.c_str() << endl;
-    // }
+    if(!xya_msg.xyas.empty())    
+    {
+        cout << "=============juice=================" << endl;
+        cout << "centroid c1: " << xya_msg.xyas[0].centroid1_x << ","<< xya_msg.xyas[0].centroid1_y << endl;
+        cout << "centroid c2: " << xya_msg.xyas[0].centroid2_x << ","<< xya_msg.xyas[0].centroid2_y << endl;        
+        cout << "angle: " << xya_msg.xyas[0].angle << endl;
+    }
 }
 
-void popcorn_xya_cb(const affordancenet::XYA& xya_msg)
+void popcorn_xya_cb(const part_sematic_seg::XYAs& xya_msg)
 {
     cout<<"popcorn_xya_cb\n";
-    // if(!xya_msg->data.c_str())//->c1.empty())
-    // {
-    //     cout << "=============popcorn=================" << endl;
-    //     cout << "centroid c1: " << xya_msg->data.c_str() << endl;
-    //     // cout << "centroid c1: " << xya_msg->c1.c_str() << endl;
-    //     // cout << "centroid c2: " << xya_msg->c2.c_str() << endl;
-    //     // cout << "angle: " << xya_msg->angle.c_str() << endl;
-    // }
+    if(!xya_msg.xyas.empty()) 
+    {
+        cout << "=============popcorn=================" << endl;
+        cout << "centroid c1: " << xya_msg.xyas[0].centroid1_x << ","<< xya_msg.xyas[0].centroid1_y << endl;
+        cout << "centroid c2: " << xya_msg.xyas[0].centroid2_x << ","<< xya_msg.xyas[0].centroid2_y << endl;        
+        cout << "angle: " << xya_msg.xyas[0].angle << endl;
+    }
 }
 
 void juice_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
@@ -456,38 +456,57 @@ void juice_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
     cv_bridge::CvImagePtr cv_ptr;
     try
     {
-        cout << "juice image" <<endl;
-        cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
+        cout << "juice image" <<endl;        
+        cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::TYPE_64FC3);
+        cv::Mat juice_color = cv::Mat(cv_ptr->image);
+        
+        std::vector<cv::Mat> rgbChannels(3);
+        cv::split(juice_color, rgbChannels);
+
+        cv::imshow("R channel", rgbChannels[2]);
+        cv::waitKey(1);
+
+        cv::imshow("G channel", rgbChannels[1]);
+        cv::waitKey(1);
+
+        cv::imshow("B channel", rgbChannels[0]);
+        cv::waitKey(1);
+        // cv::Mat blank_ch, fin_img;
+        // blank_ch = cv::Mat::zeros(cv::Size(juice_color.cols, juice_color.rows), CV_8UC1);
+        // std::vector<cv::Mat> channels_r;
+        // channels_r.push_back(blank_ch);
+
     }
     catch(cv_bridge::Exception& e)
-    {
+    {       
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-    cv::imshow("juice", cv_ptr->image);
-    cv::waitKey(3);    
+    
+    cv::imshow("juice segseg", cv_ptr->image);
+    cv::waitKey(3);
 }
 
 void popcorn_seg_img_cb(const sensor_msgs::ImageConstPtr& img_msg)
 {
     cout<<"popcorn_seg_img_cb\n";
     std_msgs::Header msg_header = img_msg->header;
-    std::string frame_id = msg_header.frame_id.c_str();
+    std::string frame_id = msg_header.frame_id;//.c_str();
     ROS_INFO_STREAM("New Image from " << frame_id);
 
     cv_bridge::CvImagePtr cv_ptr;
     try
-    {
+    {     
         cout << "popcorn image" <<endl;
-        cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::BGR8);
+        cv_ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::TYPE_64FC3);
         // cv::imshow('popcorn', cv_bridge::toCvShare(img_msg,"bgr8")->image);
     }
     catch(cv_bridge::Exception& e)
-    {
+    {     
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
-    cv::imshow("popcorn", cv_ptr->image);
+    cv::imshow("popcorn segseg", cv_ptr->image);
     cv::waitKey(3);    
 }
 
@@ -497,8 +516,8 @@ int main(int argc, char** argv)
     cout<<"inside\n";
 
     ros::NodeHandle nh;
-    // // 有序點雲 Organized Point Cloud 
-    // ros::Subscriber sub_aruco_cloud = nh.subscribe("/camera/depth_registered/points", 1, aruco_cloud_cb);
+    // 有序點雲 Organized Point Cloud 
+    ros::Subscriber sub_organized_cloud = nh.subscribe("/camera/depth_registered/points", 1, organized_cloud_cb);
 
     // Juice & popcorn XYA
     ros::Subscriber sub_juice_xya = nh.subscribe("juice_xya", 1000, juice_xya_cb);
