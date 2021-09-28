@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+
+<launch>
+   
+  <!-- Popcorn(handle, plate) & Juice(cap, body) Part cloud -->
+  <node pkg="obj_pose_cloud" type="obj_pose_cloud" name="obj_pose_cloud" output="screen"/>
+
+  <!-- Open rviz with predefined settings -->
+  <node type="rviz" name="rviz" pkg="rviz" args="-d $(find obj_pose_cloud)/conf/obj_pose_cloud_rviz.rviz" />
+
+</launch>
+
+
+
+
