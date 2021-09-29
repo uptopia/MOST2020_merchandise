@@ -4,3 +4,6 @@
 [submodule "timda_dual_arm"]
 	path = timda_dual_arm
 	url = https://github.com/tku-iarc/timda_dual_arm.git
+[submodule "tool_selection"]
+	path = tool_selection
+	url = https://github.com/uptopia/grcnn_rgb.git
