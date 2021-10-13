@@ -8,15 +8,19 @@
 #include "std_msgs/Float64MultiArray.h"
 #include "std_msgs/String.h"
 
+#include <math.h>
 //tf
 // #include <tf/transform_broadcaster.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Transform.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
 #include <sensor_msgs/PointCloud2.h>
 #include <pcl_conversions/pcl_conversions.h> //"pcl::fromROSMsg"
 
+#include <visualization_msgs/Marker.h>
 //realsense_msgs
 //"~/realsense_ros/devel/include/realsense2_camera/Extrinsics.h"
 // #include <realsense2_camera/Extrinsics.h> 
@@ -98,6 +102,8 @@ pcl::PointCloud<PointTRGB>::Ptr handle(new pcl::PointCloud<PointTRGB>);
 pcl::PointCloud<PointTRGB>::Ptr plate(new pcl::PointCloud<PointTRGB>);
 
 ros::Publisher cap_pub, body_pub, handle_pub, plate_pub; 
+ros::Publisher pubAngleAxisOpen_pub;//, pubAngleAxisApproach, pubAngleAxisNormal;
+
 sensor_msgs::PointCloud2 cap_msg, body_msg, handle_msg, plate_msg;
 
 // // tf::TransformBroadcaster br;
@@ -425,6 +431,69 @@ void organized_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_
 //         top3_cloud_pub.publish(top3_clouds_msg);        
 //     }
 // }
+tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
+{
+    //AxisAngle
+    // angle = acos(vect1.dot(vect2)/length(vect1)*length(vect2))
+    // axis = vect1.cross(vect2)
+    
+    vect1 = vect1.normalized();
+    vect2 = vect2.normalized();
+    tf2::Vector3 vect_1cross2 = vect1.cross(vect2);
+    float val_1dot2 = vect1.dot(vect2);
+    
+    float angle = acos(val_1dot2);
+    tf2::Vector3 axis = vect1.cross(vect2);
+
+    axis = axis.normalized();
+
+    tf2::Matrix3x3 R;
+    R[0][0] = cos(angle) + axis[0]*axis[0]*(1-cos(angle));
+    R[0][1] = axis[0]*axis[1]*((1-cos(angle)) - axis[2]*sin(angle));
+    R[0][2] = axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
+
+    R[1][0] = axis[2]*sin(angle) + axis[0]*axis[1]*(1-cos(angle));
+    R[1][1] = cos(angle) + axis[1]*axis[1]*(1-cos(angle));
+    R[1][2] = -axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));
+
+    R[2][0] = -axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
+    R[2][1] = axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));;
+    R[2][2] = cos(angle) + axis[2]*axis[2]*(1-cos(angle));
+
+    // // float v1 = vect_1cross2[0];
+    // // float v2 = vect_1cross2[1];
+    // // float v3 = vect_1cross2[2];
+    // // float h = 1.0 / (1.0 + val_1dot2);
+    // // Eigen::Matrix3f Vmat;
+    // // Vmat << 0.0, -v3, v2,
+    // //         v3, 0.0, -v1,
+    // //         -v2, v1, 0.0;
+
+    // // Eigen::Matrix3f Rtmp;//, Mtmp;
+    // // // Mtmp.setIdentity(3, 3);
+    // // Rtmp.setIdentity(3, 3);
+    // // Rtmp = Rtmp + Vmat;
+   
+    // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
+    // cout << (Vmat * Vmat.transpose()).diagonal() <<endl;
+    // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
+    // //https://blog.csdn.net/zhazhiqiang/article/details/52441170
+    // //https://stackoverflow.com/questions/27030554/column-wise-dot-product-in-eigen-c
+    // // Eigen::Matrix3f dotTmp;
+    // // dotTmp = (Vmat * Vmat.transpose()).diagonal();//(Vmat.cwiseProduct(Vmat)).rowwise().sum();
+    // // Rtmp = Rtmp + dotTmp*h; 
+    
+
+    // tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
+    //                  Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
+    //                  Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
+
+    cout << "tf2Matrix33 = "<< endl;
+    std::cout<<R[0][0]<<R[0][1]<<R[0][2]<<std::endl;
+    std::cout<<R[1][0]<<R[1][1]<<R[1][2]<<std::endl;
+    std::cout<<R[2][0]<<R[2][1]<<R[2][2]<<std::endl;
+    return R;
+}
 
 void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
 {
@@ -435,6 +504,75 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         cout << "centroid c1: " << xya_msg.xyas[0].centroid1_x << ","<< xya_msg.xyas[0].centroid1_y << endl;
         cout << "centroid c2: " << xya_msg.xyas[0].centroid2_x << ","<< xya_msg.xyas[0].centroid2_y << endl;        
         cout << "angle: " << xya_msg.xyas[0].angle << endl;
+        
+        PointTRGB pt_c1 = organized_cloud_ori->at(xya_msg.xyas[0].centroid1_x, xya_msg.xyas[0].centroid1_y); 
+        PointTRGB pt_c2 = organized_cloud_ori->at(xya_msg.xyas[0].centroid2_x, xya_msg.xyas[0].centroid2_y); 
+        float line_c1_c2_x = pt_c1.x - pt_c2.x;
+        float line_c1_c2_y = pt_c1.y - pt_c2.y;
+        float line_c1_c2_z = pt_c1.z - pt_c2.z;
+        tf2::Vector3 vect_c1_c2 = tf2::Vector3(line_c1_c2_x, line_c1_c2_y, line_c1_c2_z);
+        tf2::Vector3 vect_x = tf2::Vector3(1.0, 0.0, 0.0);
+        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c1_c2);
+        // tf2::Matrix3x3 tf2_rot(rot.at<double>(0, 0), rot.at<double>(0, 1), rot.at<double>(0, 2),
+        //                            rot.at<double>(1, 0), rot.at<double>(1, 1), rot.at<double>(1, 2),
+        //                            rot.at<double>(2, 0), rot.at<double>(2, 1), rot.at<double>(2, 2));
+            
+
+        tf2::Transform tf2_transform(tf2_rot, vect_c1_c2);//tf2::Vector3());
+        geometry_msgs::Pose pose_msg;
+        tf2::toMsg(tf2_transform, pose_msg);
+        cout<<"pose_msg:"<<pose_msg<<endl;
+
+        // // std::string marker_coord_name = "marker_" + std::to_string(n);
+        // //     // cout<<"Marker_coord_name = "<< marker_coord_name <<endl;
+
+
+        // //https://answers.ros.org/question/263715/fixed-frame-map-does-not-exist/
+        // //[ERROR] [1634127725.956932461]: Ignoring transform for child_frame_id "AAA_frame" from authority "unknown_publisher" because of an invalid quaternion in the transform (0.000000 -0.000000 -0.354796 0.704612)
+
+        // geometry_msgs::TransformStamped trans_Cam2tmp;
+        // trans_Cam2tmp.header.stamp = ros::Time::now();
+        // trans_Cam2tmp.header.frame_id = "camera_color_optical_frame";
+        // trans_Cam2tmp.child_frame_id = "AAA_frame"; //marker_coord_name;//"AAA_frame";            
+        // trans_Cam2tmp.transform.translation.x = pose_msg.position.x;
+        // trans_Cam2tmp.transform.translation.y = pose_msg.position.y;
+        // trans_Cam2tmp.transform.translation.z = pose_msg.position.z;
+        // trans_Cam2tmp.transform.rotation.x = pose_msg.orientation.x;
+        // trans_Cam2tmp.transform.rotation.y = pose_msg.orientation.y;
+        // trans_Cam2tmp.transform.rotation.z = pose_msg.orientation.z;
+        // trans_Cam2tmp.transform.rotation.w = pose_msg.orientation.w;
+
+        // static tf2_ros::StaticTransformBroadcaster sbr_tmp;
+        // sbr_tmp.sendTransform(trans_Cam2tmp);
+        
+        //=========rviz marker=========
+        Eigen::Quaterniond AQ;
+        visualization_msgs::Marker open_arrow;
+        open_arrow.header.frame_id = "camera_color_optical_frame";
+        open_arrow.header.stamp = ros::Time();
+        open_arrow.ns = "my_namespace";
+        open_arrow.id = 0;
+        open_arrow.type = visualization_msgs::Marker::ARROW;
+        open_arrow.action = visualization_msgs::Marker::ADD;
+        open_arrow.pose.position.x = pose_msg.position.x;
+        open_arrow.pose.position.y = pose_msg.position.y;
+        open_arrow.pose.position.z = pose_msg.position.z;
+        open_arrow.pose.orientation.x = pose_msg.orientation.x;
+        open_arrow.pose.orientation.y = pose_msg.orientation.y;
+        open_arrow.pose.orientation.z = pose_msg.orientation.z;
+        open_arrow.pose.orientation.w = pose_msg.orientation.w;
+        open_arrow.scale.x = 0.003;
+        open_arrow.scale.y = 0.003;
+        open_arrow.scale.z = 0.003;
+        open_arrow.color.a = 1.0; // Don't forget to set the alpha!
+        open_arrow.color.r = 1.0;
+        open_arrow.color.g = 0.0;
+        open_arrow.color.b = 0.0;
+
+        cout<< "pubAngleAxisOpen rviz marker" <<endl;
+
+        pubAngleAxisOpen_pub.publish(open_arrow);
+        //=========rviz marker=========
     }
 }
 
@@ -593,6 +731,9 @@ int main(int argc, char** argv)
     body_pub = nh.advertise<sensor_msgs::PointCloud2>("body_topic", 1);
     handle_pub = nh.advertise<sensor_msgs::PointCloud2>("handle_topic", 1);
     plate_pub = nh.advertise<sensor_msgs::PointCloud2>("plate_topic", 1);
+    
+    pubAngleAxisOpen_pub = nh.advertise<visualization_msgs::Marker>("/pubAngleAxisOpen", 1);
+    // plate_pub = nh.advertise<sensor_msgs::PointCloud2>("plate_topic", 1);
 
     cout<<"try\n";
     ros::spin();
