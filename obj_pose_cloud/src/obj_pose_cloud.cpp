@@ -436,8 +436,8 @@ tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
     //====== AxisAngle ======//
     // angle = acos(vect1.dot(vect2)/length(vect1)*length(vect2))
     // axis = vect1.cross(vect2)
-    //====== AxisAngle ======//
-    
+    //====== AxisAngle ======//    
+
     vect1.normalize();
     vect2.normalize();
 
@@ -458,10 +458,40 @@ tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
     float angle = acos(val_1dot2);
 
     // 3. rotation matrix using Rodrigues' formula
+    //(m1) https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d
+    //(m2) https://stackoverflow.com/questions/67017134/find-rotation-matrix-to-align-two-vectors?fbclid=IwAR3auoszQ2E9BV11-Nk8qEwvLRWODEbDozrIZ_GRheGVFe03untEodfmOSQ
+    // // (m1)
+    // Eigen::Matrix3f Rtmp;
+    // Rtmp.setIdentity(3, 3);
+    // Rtmp = Rtmp + sin(angle)*skew + (1-cos(angle))*skew*skew;
+
+    // (m2)
+    float h = 1/(1+angle);
+    Eigen::Matrix3f htmp;
+    htmp.setIdentity(3,3);
+    htmp = h*htmp;
 
     Eigen::Matrix3f Rtmp;
     Rtmp.setIdentity(3, 3);
-    Rtmp = Rtmp + sin(angle)*skew + (1-cos(angle))*skew*skew;
+    Rtmp = Rtmp + skew + skew*skew*htmp;
+
+
+    //===============
+    // STRANGE!!!!
+    //===============
+    // camera_link to camera_color_optical_frame
+    // rotate around z then rotate around new x
+    Eigen::Matrix3f rotate_z;
+    rotate_z << cos(-M_PI/2), -sin(-M_PI/2), 0,
+                sin(-M_PI/2), cos(-M_PI/2), 0,
+                0, 0, 1;
+
+    Eigen::Matrix3f rotate_x;
+    rotate_x << 1, 0, 0,
+                0, cos(-M_PI/2), -sin(-M_PI/2),
+                0, sin(-M_PI/2), cos(-M_PI/2);
+
+    Rtmp = Rtmp;// rotate_z;//*Rtmp;//rotate_x*
     
     tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
                     Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
@@ -504,7 +534,6 @@ tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
     // // // dotTmp = (Vmat * Vmat.transpose()).diagonal();//(Vmat.cwiseProduct(Vmat)).rowwise().sum();
     // // // Rtmp = Rtmp + dotTmp*h; 
     
-
     // // tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
     // //                  Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
     // //                  Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
@@ -513,6 +542,43 @@ tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
     cout << R[0][0] << ", "  << R[0][1] << ", "  << R[0][2] << endl;
     cout << R[1][0] << ", "  << R[1][1] << ", "  << R[1][2] << endl;
     cout << R[2][0] << ", "  << R[2][1] << ", "  << R[2][2] << endl;
+    return R;
+}
+
+tf2::Matrix3x3 align_vectors_juice(tf2::Vector3 vect1, tf2::Vector3 vect2)
+{  
+    //====== AxisAngle ======//
+    // angle = acos(vect1.dot(vect2)/length(vect1)*length(vect2))
+    // axis = vect1.cross(vect2)
+    //====== AxisAngle ======//    
+    vect1.normalize();
+    vect2.normalize();
+
+    // 1. rotation axis
+    tf2::Vector3 axis = vect1.cross(vect2);
+    axis.normalize();
+    float v1 = axis.x();
+    float v2 = axis.y();
+    float v3 = axis.z();
+
+    Eigen::Matrix3f skew;
+    skew << 0.0, -v3, v2,
+            v3, 0.0, -v1,
+            -v2, v1, 0.0;
+     
+    // 2. rotation angle
+    float val_1dot2 = vect1.dot(vect2);    
+    float angle = acos(val_1dot2);
+
+    // 3. rotation matrix using Rodrigues' formula
+    Eigen::Matrix3f Rtmp;
+    Rtmp.setIdentity(3, 3);
+    Rtmp = Rtmp + sin(angle)*skew + (1-cos(angle))*skew*skew;  
+    
+    tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
+                    Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
+                    Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
+
     return R;
 }
 
@@ -528,29 +594,28 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         
         PointTRGB pt_c1 = organized_cloud_ori->at(xya_msg.xyas[0].centroid1_x, xya_msg.xyas[0].centroid1_y); 
         PointTRGB pt_c2 = organized_cloud_ori->at(xya_msg.xyas[0].centroid2_x, xya_msg.xyas[0].centroid2_y); 
-        float line_c2_c1_x = pt_c2.x - pt_c1.x;
-        float line_c2_c1_y = pt_c2.y - pt_c1.y;
-        float line_c2_c1_z = pt_c2.z - pt_c1.z;
+        float line_c2_c1_x = pt_c1.x - pt_c2.x;
+        float line_c2_c1_y = pt_c1.y - pt_c2.y;
+        float line_c2_c1_z = pt_c1.z - pt_c2.z;
         tf2::Vector3 vect_c2_c1 = tf2::Vector3(line_c2_c1_x, line_c2_c1_y, line_c2_c1_z);
         vect_c2_c1.normalize();
         tf2::Vector3 vect_x = tf2::Vector3(1.0, 0.0, 0.0);
-        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c2_c1);
+        tf2::Matrix3x3 tf2_rot = align_vectors_juice(vect_x, vect_c2_c1);
         // tf2::Matrix3x3 tf2_rot(rot.at<double>(0, 0), rot.at<double>(0, 1), rot.at<double>(0, 2),
         //                            rot.at<double>(1, 0), rot.at<double>(1, 1), rot.at<double>(1, 2),
         //                            rot.at<double>(2, 0), rot.at<double>(2, 1), rot.at<double>(2, 2));
         // tf2::Matrix3x3 tf2_rot;
         // tf2_rot.setIdentity();            
 
-        // tf2::Transform tf2_transform(tf2_rot, vect_x);//vect_c2_c1);//tf2::Vector3());
-        tf2::Vector3 pt(pt_c2.x,pt_c2.y,pt_c2.z);
-        tf2::Transform tf2_transform(tf2_rot, pt);
+        tf2::Transform tf2_transform(tf2_rot, vect_x);//vect_c2_c1);//tf2::Vector3());
+        // tf2::Vector3 pt(pt_c2.x,pt_c2.y,pt_c2.z);
+        // tf2::Transform tf2_transform(tf2_rot, pt);
         geometry_msgs::Pose pose_msg;
         tf2::toMsg(tf2_transform, pose_msg);
         cout<<"juice pose_msg:"<<pose_msg<<endl;
 
         // // std::string marker_coord_name = "marker_" + std::to_string(n);
-        // //     // cout<<"Marker_coord_name = "<< marker_coord_name <<endl;
-
+        // // cout<<"Marker_coord_name = "<< marker_coord_name <<endl;
 
         // //https://answers.ros.org/question/263715/fixed-frame-map-does-not-exist/
         // //[ERROR] [1634127725.956932461]: Ignoring transform for child_frame_id "AAA_frame" from authority "unknown_publisher" because of an invalid quaternion in the transform (0.000000 -0.000000 -0.354796 0.704612)
@@ -570,10 +635,14 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         // static tf2_ros::StaticTransformBroadcaster sbr_tmp;
         // sbr_tmp.sendTransform(trans_Cam2tmp);
         
+        Eigen::Vector3d vv1 = Eigen::Vector3d(vect_x[0], vect_x[1], vect_x[2]);
+        Eigen::Vector3d vv2 = Eigen::Vector3d(line_c2_c1_x, line_c2_c1_y, line_c2_c1_z);
+        Eigen::Quaterniond out = Eigen::Quaterniond::FromTwoVectors(vv1, vv2);
+
         //=========rviz marker=========
         Eigen::Quaterniond AQ;
         visualization_msgs::Marker juice_arrow;
-        juice_arrow.header.frame_id = "camera_color_optical_frame";
+        juice_arrow.header.frame_id = "camera_color_optical_frame";//"camera_color_optical_frame";camera_link
         juice_arrow.header.stamp = ros::Time();
         juice_arrow.ns = "my_namespace";
         juice_arrow.id = 0;
@@ -582,10 +651,10 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         juice_arrow.pose.position.x = pt_c2.x;//pose_msg.position.x;
         juice_arrow.pose.position.y = pt_c2.y;//pose_msg.position.y;
         juice_arrow.pose.position.z = pt_c2.z;//pose_msg.position.z;
-        juice_arrow.pose.orientation.x = pose_msg.orientation.x;//0;//
-        juice_arrow.pose.orientation.y = pose_msg.orientation.y;//0;//
-        juice_arrow.pose.orientation.z = pose_msg.orientation.z;//0;//
-        juice_arrow.pose.orientation.w = pose_msg.orientation.w;//1;//
+        juice_arrow.pose.orientation.x = out.x();//pose_msg.orientation.x;//0;//
+        juice_arrow.pose.orientation.y = out.y();//pose_msg.orientation.y;//0;//
+        juice_arrow.pose.orientation.z = out.z();//pose_msg.orientation.z;//0;//
+        juice_arrow.pose.orientation.w = out.w();//pose_msg.orientation.w;//1;//
         juice_arrow.scale.x = sqrt(pow(line_c2_c1_x,2)+pow(line_c2_c1_y,2)+pow(line_c2_c1_z,2)); //length
         juice_arrow.scale.y = 0.003; //width
         juice_arrow.scale.z = 0.003; //height
@@ -613,24 +682,29 @@ void popcorn_xya_cb(const part_sematic_seg::XYAs& xya_msg)
 
         PointTRGB pt_c1 = organized_cloud_ori->at(xya_msg.xyas[0].centroid1_x, xya_msg.xyas[0].centroid1_y); 
         PointTRGB pt_c2 = organized_cloud_ori->at(xya_msg.xyas[0].centroid2_x, xya_msg.xyas[0].centroid2_y); 
-        float line_c1_c2_x = pt_c1.x - pt_c2.x;
-        float line_c1_c2_y = pt_c1.y - pt_c2.y;
-        float line_c1_c2_z = pt_c1.z - pt_c2.z;
+        float line_c1_c2_x = pt_c2.x - pt_c1.x;
+        float line_c1_c2_y = pt_c2.y - pt_c1.y;
+        float line_c1_c2_z = pt_c2.z - pt_c1.z;
         tf2::Vector3 vect_c1_c2 = tf2::Vector3(line_c1_c2_x, line_c1_c2_y, line_c1_c2_z);
         vect_c1_c2.normalize();
         tf2::Vector3 vect_x = tf2::Vector3(1.0, 0.0, 0.0);
-        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c1_c2);
+        // tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c1_c2);
 
-        tf2::Vector3 pt(pt_c1.x,pt_c1.y,pt_c1.z);
-        tf2::Transform tf2_transform(tf2_rot, pt);
-        geometry_msgs::Pose pose_msg;
-        tf2::toMsg(tf2_transform, pose_msg);
-        cout<<"popcorn pose_msg:"<<pose_msg<<endl;
+        // tf2::Transform tf2_transform(tf2_rot, vect_x);//vect_c2_c1);//tf2::Vector3());
+        // // tf2::Vector3 pt(pt_c1.x,pt_c1.y,pt_c1.z);
+        // // tf2::Transform tf2_transform(tf2_rot, pt);
+        // geometry_msgs::Pose pose_msg;
+        // tf2::toMsg(tf2_transform, pose_msg);
+        // cout<<"popcorn pose_msg:"<<pose_msg<<endl;
+
+        Eigen::Vector3d vv1 = Eigen::Vector3d(vect_x[0], vect_x[1], vect_x[2]);
+        Eigen::Vector3d vv2 = Eigen::Vector3d(line_c1_c2_x, line_c1_c2_y, line_c1_c2_z);
+        Eigen::Quaterniond out = Eigen::Quaterniond::FromTwoVectors(vv1, vv2);
 
         //=========rviz marker=========
         Eigen::Quaterniond AQ;
         visualization_msgs::Marker popcorn_arrow;
-        popcorn_arrow.header.frame_id = "camera_color_optical_frame";
+        popcorn_arrow.header.frame_id = "camera_color_optical_frame";//"camera_color_optical_frame";
         popcorn_arrow.header.stamp = ros::Time();
         popcorn_arrow.ns = "my_namespace";
         popcorn_arrow.id = 0;
@@ -639,14 +713,14 @@ void popcorn_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         popcorn_arrow.pose.position.x = pt_c1.x;
         popcorn_arrow.pose.position.y = pt_c1.y;
         popcorn_arrow.pose.position.z = pt_c1.z;
-        popcorn_arrow.pose.orientation.x = pose_msg.orientation.x;
-        popcorn_arrow.pose.orientation.y = pose_msg.orientation.y;
-        popcorn_arrow.pose.orientation.z = pose_msg.orientation.z;
-        popcorn_arrow.pose.orientation.w = pose_msg.orientation.w;
+        popcorn_arrow.pose.orientation.x = out.x();//pose_msg.orientation.x;
+        popcorn_arrow.pose.orientation.y = out.y();//pose_msg.orientation.y;
+        popcorn_arrow.pose.orientation.z = out.z();//pose_msg.orientation.z;
+        popcorn_arrow.pose.orientation.w = out.w();//pose_msg.orientation.w;
         popcorn_arrow.scale.x = sqrt(pow(line_c1_c2_x,2)+pow(line_c1_c2_y,2)+pow(line_c1_c2_z,2)); //length
-        popcorn_arrow.scale.y = 0.003; //width
-        popcorn_arrow.scale.z = 0.003; //height
-        popcorn_arrow.color.a = 1.0; // Don't forget to set the alpha!
+        popcorn_arrow.scale.y = 0.003;  //width
+        popcorn_arrow.scale.z = 0.003;  //height
+        popcorn_arrow.color.a = 1.0;    // Don't forget to set the alpha!
         popcorn_arrow.color.r = 0.0;
         popcorn_arrow.color.g = 0.0;
         popcorn_arrow.color.b = 1.0;
