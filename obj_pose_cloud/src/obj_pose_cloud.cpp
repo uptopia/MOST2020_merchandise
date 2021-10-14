@@ -102,7 +102,7 @@ pcl::PointCloud<PointTRGB>::Ptr handle(new pcl::PointCloud<PointTRGB>);
 pcl::PointCloud<PointTRGB>::Ptr plate(new pcl::PointCloud<PointTRGB>);
 
 ros::Publisher cap_pub, body_pub, handle_pub, plate_pub; 
-ros::Publisher pubAngleAxisOpen_pub;//, pubAngleAxisApproach, pubAngleAxisNormal;
+ros::Publisher juice_pose_pub, popcorn_pose_pub;
 
 sensor_msgs::PointCloud2 cap_msg, body_msg, handle_msg, plate_msg;
 
@@ -432,66 +432,87 @@ void organized_cloud_cb(const sensor_msgs::PointCloud2ConstPtr& organized_cloud_
 //     }
 // }
 tf2::Matrix3x3 align_vectors(tf2::Vector3 vect1, tf2::Vector3 vect2)
-{
-    //AxisAngle
+{  
+    //====== AxisAngle ======//
     // angle = acos(vect1.dot(vect2)/length(vect1)*length(vect2))
     // axis = vect1.cross(vect2)
+    //====== AxisAngle ======//
     
-    vect1 = vect1.normalized();
-    vect2 = vect2.normalized();
-    tf2::Vector3 vect_1cross2 = vect1.cross(vect2);
-    float val_1dot2 = vect1.dot(vect2);
-    
-    float angle = acos(val_1dot2);
+    vect1.normalize();
+    vect2.normalize();
+
+    // 1. rotation axis
     tf2::Vector3 axis = vect1.cross(vect2);
+    axis.normalize();
+    float v1 = axis.x();
+    float v2 = axis.y();
+    float v3 = axis.z();
 
-    axis = axis.normalized();
+    Eigen::Matrix3f skew;
+    skew << 0.0, -v3, v2,
+            v3, 0.0, -v1,
+            -v2, v1, 0.0;
+     
+    // 2. rotation angle
+    float val_1dot2 = vect1.dot(vect2);    
+    float angle = acos(val_1dot2);
 
-    tf2::Matrix3x3 R;
-    R[0][0] = cos(angle) + axis[0]*axis[0]*(1-cos(angle));
-    R[0][1] = axis[0]*axis[1]*((1-cos(angle)) - axis[2]*sin(angle));
-    R[0][2] = axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
+    // 3. rotation matrix using Rodrigues' formula
 
-    R[1][0] = axis[2]*sin(angle) + axis[0]*axis[1]*(1-cos(angle));
-    R[1][1] = cos(angle) + axis[1]*axis[1]*(1-cos(angle));
-    R[1][2] = -axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));
+    Eigen::Matrix3f Rtmp;
+    Rtmp.setIdentity(3, 3);
+    Rtmp = Rtmp + sin(angle)*skew + (1-cos(angle))*skew*skew;
+    
+    tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
+                    Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
+                    Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
 
-    R[2][0] = -axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
-    R[2][1] = axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));;
-    R[2][2] = cos(angle) + axis[2]*axis[2]*(1-cos(angle));
+    // tf2::Matrix3x3 R;
+    // R[0][0] = cos(angle) + axis[0]*axis[0]*(1-cos(angle));
+    // R[0][1] = axis[0]*axis[1]*((1-cos(angle)) - axis[2]*sin(angle));
+    // R[0][2] = axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
 
-    // // float v1 = vect_1cross2[0];
-    // // float v2 = vect_1cross2[1];
-    // // float v3 = vect_1cross2[2];
-    // // float h = 1.0 / (1.0 + val_1dot2);
-    // // Eigen::Matrix3f Vmat;
-    // // Vmat << 0.0, -v3, v2,
-    // //         v3, 0.0, -v1,
-    // //         -v2, v1, 0.0;
+    // R[1][0] = axis[2]*sin(angle) + axis[0]*axis[1]*(1-cos(angle));
+    // R[1][1] = cos(angle) + axis[1]*axis[1]*(1-cos(angle));
+    // R[1][2] = -axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));
 
-    // // Eigen::Matrix3f Rtmp;//, Mtmp;
-    // // // Mtmp.setIdentity(3, 3);
-    // // Rtmp.setIdentity(3, 3);
-    // // Rtmp = Rtmp + Vmat;
+    // R[2][0] = -axis[1]*sin(angle) + axis[0]*axis[2]*(1-cos(angle));
+    // R[2][1] = axis[0]*sin(angle) + axis[1]*axis[2]*(1-cos(angle));;
+    // R[2][2] = cos(angle) + axis[2]*axis[2]*(1-cos(angle));
+
+    // // // float v1 = vect_1cross2[0];
+    // // // float v2 = vect_1cross2[1];
+    // // // float v3 = vect_1cross2[2];
+    // // // float h = 1.0 / (1.0 + val_1dot2);
+    // // // Eigen::Matrix3f Vmat;
+    // // // Vmat << 0.0, -v3, v2,
+    // // //         v3, 0.0, -v1,
+    // // //         -v2, v1, 0.0;
+
+    // // // Eigen::Matrix3f Rtmp;//, Mtmp;
+    // // // // Mtmp.setIdentity(3, 3);
+    // // // Rtmp.setIdentity(3, 3);
+    // // // Rtmp = Rtmp + Vmat;
    
-    // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
-    // cout << (Vmat * Vmat.transpose()).diagonal() <<endl;
-    // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
-    // //https://blog.csdn.net/zhazhiqiang/article/details/52441170
-    // //https://stackoverflow.com/questions/27030554/column-wise-dot-product-in-eigen-c
-    // // Eigen::Matrix3f dotTmp;
-    // // dotTmp = (Vmat * Vmat.transpose()).diagonal();//(Vmat.cwiseProduct(Vmat)).rowwise().sum();
-    // // Rtmp = Rtmp + dotTmp*h; 
+    // // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
+    // // cout << (Vmat * Vmat.transpose()).diagonal() <<endl;
+    // // cout <<"testttttttttttttttttttttttttttttttttttt"<<endl;
+    // // //https://blog.csdn.net/zhazhiqiang/article/details/52441170
+    // ////https://math.stackexchange.com/questions/180418/calculate-rotation-matrix-to-align-vector-a-to-vector-b-in-3d
+    // // //https://stackoverflow.com/questions/27030554/column-wise-dot-product-in-eigen-c
+    // // // Eigen::Matrix3f dotTmp;
+    // // // dotTmp = (Vmat * Vmat.transpose()).diagonal();//(Vmat.cwiseProduct(Vmat)).rowwise().sum();
+    // // // Rtmp = Rtmp + dotTmp*h; 
     
 
-    // tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
-    //                  Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
-    //                  Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
+    // // tf2::Matrix3x3 R(Rtmp.coeff(0,0), Rtmp.coeff(1,0), Rtmp.coeff(2,0),
+    // //                  Rtmp.coeff(0,1), Rtmp.coeff(1,1), Rtmp.coeff(2,1),
+    // //                  Rtmp.coeff(0,2), Rtmp.coeff(1,2), Rtmp.coeff(2,2));
 
     cout << "tf2Matrix33 = "<< endl;
-    std::cout<<R[0][0]<<R[0][1]<<R[0][2]<<std::endl;
-    std::cout<<R[1][0]<<R[1][1]<<R[1][2]<<std::endl;
-    std::cout<<R[2][0]<<R[2][1]<<R[2][2]<<std::endl;
+    cout << R[0][0] << ", "  << R[0][1] << ", "  << R[0][2] << endl;
+    cout << R[1][0] << ", "  << R[1][1] << ", "  << R[1][2] << endl;
+    cout << R[2][0] << ", "  << R[2][1] << ", "  << R[2][2] << endl;
     return R;
 }
 
@@ -507,21 +528,25 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         
         PointTRGB pt_c1 = organized_cloud_ori->at(xya_msg.xyas[0].centroid1_x, xya_msg.xyas[0].centroid1_y); 
         PointTRGB pt_c2 = organized_cloud_ori->at(xya_msg.xyas[0].centroid2_x, xya_msg.xyas[0].centroid2_y); 
-        float line_c1_c2_x = pt_c1.x - pt_c2.x;
-        float line_c1_c2_y = pt_c1.y - pt_c2.y;
-        float line_c1_c2_z = pt_c1.z - pt_c2.z;
-        tf2::Vector3 vect_c1_c2 = tf2::Vector3(line_c1_c2_x, line_c1_c2_y, line_c1_c2_z);
+        float line_c2_c1_x = pt_c2.x - pt_c1.x;
+        float line_c2_c1_y = pt_c2.y - pt_c1.y;
+        float line_c2_c1_z = pt_c2.z - pt_c1.z;
+        tf2::Vector3 vect_c2_c1 = tf2::Vector3(line_c2_c1_x, line_c2_c1_y, line_c2_c1_z);
+        vect_c2_c1.normalize();
         tf2::Vector3 vect_x = tf2::Vector3(1.0, 0.0, 0.0);
-        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c1_c2);
+        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c2_c1);
         // tf2::Matrix3x3 tf2_rot(rot.at<double>(0, 0), rot.at<double>(0, 1), rot.at<double>(0, 2),
         //                            rot.at<double>(1, 0), rot.at<double>(1, 1), rot.at<double>(1, 2),
         //                            rot.at<double>(2, 0), rot.at<double>(2, 1), rot.at<double>(2, 2));
-            
+        // tf2::Matrix3x3 tf2_rot;
+        // tf2_rot.setIdentity();            
 
-        tf2::Transform tf2_transform(tf2_rot, vect_c1_c2);//tf2::Vector3());
+        // tf2::Transform tf2_transform(tf2_rot, vect_x);//vect_c2_c1);//tf2::Vector3());
+        tf2::Vector3 pt(pt_c2.x,pt_c2.y,pt_c2.z);
+        tf2::Transform tf2_transform(tf2_rot, pt);
         geometry_msgs::Pose pose_msg;
         tf2::toMsg(tf2_transform, pose_msg);
-        cout<<"pose_msg:"<<pose_msg<<endl;
+        cout<<"juice pose_msg:"<<pose_msg<<endl;
 
         // // std::string marker_coord_name = "marker_" + std::to_string(n);
         // //     // cout<<"Marker_coord_name = "<< marker_coord_name <<endl;
@@ -534,44 +559,44 @@ void juice_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         // trans_Cam2tmp.header.stamp = ros::Time::now();
         // trans_Cam2tmp.header.frame_id = "camera_color_optical_frame";
         // trans_Cam2tmp.child_frame_id = "AAA_frame"; //marker_coord_name;//"AAA_frame";            
-        // trans_Cam2tmp.transform.translation.x = pose_msg.position.x;
-        // trans_Cam2tmp.transform.translation.y = pose_msg.position.y;
-        // trans_Cam2tmp.transform.translation.z = pose_msg.position.z;
-        // trans_Cam2tmp.transform.rotation.x = pose_msg.orientation.x;
-        // trans_Cam2tmp.transform.rotation.y = pose_msg.orientation.y;
-        // trans_Cam2tmp.transform.rotation.z = pose_msg.orientation.z;
-        // trans_Cam2tmp.transform.rotation.w = pose_msg.orientation.w;
+        // trans_Cam2tmp.transform.translation.x = pt_c1.x;//pose_msg.position.x;
+        // trans_Cam2tmp.transform.translation.y = pt_c1.y;//pose_msg.position.y;
+        // trans_Cam2tmp.transform.translation.z = pt_c1.z;//pose_msg.position.z;
+        // trans_Cam2tmp.transform.rotation.x = 0;//pose_msg.orientation.x;
+        // trans_Cam2tmp.transform.rotation.y = 0;//pose_msg.orientation.y;
+        // trans_Cam2tmp.transform.rotation.z = 0;//pose_msg.orientation.z;
+        // trans_Cam2tmp.transform.rotation.w = 1;//pose_msg.orientation.w;
 
         // static tf2_ros::StaticTransformBroadcaster sbr_tmp;
         // sbr_tmp.sendTransform(trans_Cam2tmp);
         
         //=========rviz marker=========
         Eigen::Quaterniond AQ;
-        visualization_msgs::Marker open_arrow;
-        open_arrow.header.frame_id = "camera_color_optical_frame";
-        open_arrow.header.stamp = ros::Time();
-        open_arrow.ns = "my_namespace";
-        open_arrow.id = 0;
-        open_arrow.type = visualization_msgs::Marker::ARROW;
-        open_arrow.action = visualization_msgs::Marker::ADD;
-        open_arrow.pose.position.x = pose_msg.position.x;
-        open_arrow.pose.position.y = pose_msg.position.y;
-        open_arrow.pose.position.z = pose_msg.position.z;
-        open_arrow.pose.orientation.x = pose_msg.orientation.x;
-        open_arrow.pose.orientation.y = pose_msg.orientation.y;
-        open_arrow.pose.orientation.z = pose_msg.orientation.z;
-        open_arrow.pose.orientation.w = pose_msg.orientation.w;
-        open_arrow.scale.x = 0.003;
-        open_arrow.scale.y = 0.003;
-        open_arrow.scale.z = 0.003;
-        open_arrow.color.a = 1.0; // Don't forget to set the alpha!
-        open_arrow.color.r = 1.0;
-        open_arrow.color.g = 0.0;
-        open_arrow.color.b = 0.0;
+        visualization_msgs::Marker juice_arrow;
+        juice_arrow.header.frame_id = "camera_color_optical_frame";
+        juice_arrow.header.stamp = ros::Time();
+        juice_arrow.ns = "my_namespace";
+        juice_arrow.id = 0;
+        juice_arrow.type = visualization_msgs::Marker::ARROW;
+        juice_arrow.action = visualization_msgs::Marker::ADD;
+        juice_arrow.pose.position.x = pt_c2.x;//pose_msg.position.x;
+        juice_arrow.pose.position.y = pt_c2.y;//pose_msg.position.y;
+        juice_arrow.pose.position.z = pt_c2.z;//pose_msg.position.z;
+        juice_arrow.pose.orientation.x = pose_msg.orientation.x;//0;//
+        juice_arrow.pose.orientation.y = pose_msg.orientation.y;//0;//
+        juice_arrow.pose.orientation.z = pose_msg.orientation.z;//0;//
+        juice_arrow.pose.orientation.w = pose_msg.orientation.w;//1;//
+        juice_arrow.scale.x = sqrt(pow(line_c2_c1_x,2)+pow(line_c2_c1_y,2)+pow(line_c2_c1_z,2)); //length
+        juice_arrow.scale.y = 0.003; //width
+        juice_arrow.scale.z = 0.003; //height
+        juice_arrow.color.a = 1.0; // Don't forget to set the alpha!
+        juice_arrow.color.r = 1.0;
+        juice_arrow.color.g = 0.0;
+        juice_arrow.color.b = 0.0;
 
-        cout<< "pubAngleAxisOpen rviz marker" <<endl;
+        cout<< "juice_pose_topic rviz marker" <<endl;
 
-        pubAngleAxisOpen_pub.publish(open_arrow);
+        juice_pose_pub.publish(juice_arrow);
         //=========rviz marker=========
     }
 }
@@ -585,6 +610,51 @@ void popcorn_xya_cb(const part_sematic_seg::XYAs& xya_msg)
         cout << "centroid c1: " << xya_msg.xyas[0].centroid1_x << ","<< xya_msg.xyas[0].centroid1_y << endl;
         cout << "centroid c2: " << xya_msg.xyas[0].centroid2_x << ","<< xya_msg.xyas[0].centroid2_y << endl;        
         cout << "angle: " << xya_msg.xyas[0].angle << endl;
+
+        PointTRGB pt_c1 = organized_cloud_ori->at(xya_msg.xyas[0].centroid1_x, xya_msg.xyas[0].centroid1_y); 
+        PointTRGB pt_c2 = organized_cloud_ori->at(xya_msg.xyas[0].centroid2_x, xya_msg.xyas[0].centroid2_y); 
+        float line_c1_c2_x = pt_c1.x - pt_c2.x;
+        float line_c1_c2_y = pt_c1.y - pt_c2.y;
+        float line_c1_c2_z = pt_c1.z - pt_c2.z;
+        tf2::Vector3 vect_c1_c2 = tf2::Vector3(line_c1_c2_x, line_c1_c2_y, line_c1_c2_z);
+        vect_c1_c2.normalize();
+        tf2::Vector3 vect_x = tf2::Vector3(1.0, 0.0, 0.0);
+        tf2::Matrix3x3 tf2_rot = align_vectors(vect_x, vect_c1_c2);
+
+        tf2::Vector3 pt(pt_c1.x,pt_c1.y,pt_c1.z);
+        tf2::Transform tf2_transform(tf2_rot, pt);
+        geometry_msgs::Pose pose_msg;
+        tf2::toMsg(tf2_transform, pose_msg);
+        cout<<"popcorn pose_msg:"<<pose_msg<<endl;
+
+        //=========rviz marker=========
+        Eigen::Quaterniond AQ;
+        visualization_msgs::Marker popcorn_arrow;
+        popcorn_arrow.header.frame_id = "camera_color_optical_frame";
+        popcorn_arrow.header.stamp = ros::Time();
+        popcorn_arrow.ns = "my_namespace";
+        popcorn_arrow.id = 0;
+        popcorn_arrow.type = visualization_msgs::Marker::ARROW;
+        popcorn_arrow.action = visualization_msgs::Marker::ADD;
+        popcorn_arrow.pose.position.x = pt_c1.x;
+        popcorn_arrow.pose.position.y = pt_c1.y;
+        popcorn_arrow.pose.position.z = pt_c1.z;
+        popcorn_arrow.pose.orientation.x = pose_msg.orientation.x;
+        popcorn_arrow.pose.orientation.y = pose_msg.orientation.y;
+        popcorn_arrow.pose.orientation.z = pose_msg.orientation.z;
+        popcorn_arrow.pose.orientation.w = pose_msg.orientation.w;
+        popcorn_arrow.scale.x = sqrt(pow(line_c1_c2_x,2)+pow(line_c1_c2_y,2)+pow(line_c1_c2_z,2)); //length
+        popcorn_arrow.scale.y = 0.003; //width
+        popcorn_arrow.scale.z = 0.003; //height
+        popcorn_arrow.color.a = 1.0; // Don't forget to set the alpha!
+        popcorn_arrow.color.r = 0.0;
+        popcorn_arrow.color.g = 0.0;
+        popcorn_arrow.color.b = 1.0;
+
+        cout<< "popcorn_pose_topic rviz marker" <<endl;
+
+        popcorn_pose_pub.publish(popcorn_arrow);
+        //=========rviz marker=========
     }
 }
 
@@ -732,8 +802,8 @@ int main(int argc, char** argv)
     handle_pub = nh.advertise<sensor_msgs::PointCloud2>("handle_topic", 1);
     plate_pub = nh.advertise<sensor_msgs::PointCloud2>("plate_topic", 1);
     
-    pubAngleAxisOpen_pub = nh.advertise<visualization_msgs::Marker>("/pubAngleAxisOpen", 1);
-    // plate_pub = nh.advertise<sensor_msgs::PointCloud2>("plate_topic", 1);
+    juice_pose_pub = nh.advertise<visualization_msgs::Marker>("/juice_pose_topic", 1);
+    popcorn_pose_pub = nh.advertise<visualization_msgs::Marker>("/popcorn_pose_topic", 1);    
 
     cout<<"try\n";
     ros::spin();
